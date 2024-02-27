@@ -1,0 +1,106 @@
+---
+title: "MiningWiley"
+output: html_document
+date: "2024-02-23"
+---
+
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(tidyr)
+library(httr)
+library(jsonlite)
+library(readr)
+
+StudyList_EFSA <- read_csv("StudyList_EFSA.csv", 
+    col_names = FALSE) %>% rename(StudyNames=1)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+StudyList_EFSA
+```
+
+```{r}
+df_dois_EFSA<-data.frame()
+for(i in 1:nrow(StudyList_EFSA)){
+  title_search<-StudyList_EFSA$StudyNames[i]
+  journal_name <- "EFSA Journal"
+
+  url <- paste0("https://api.crossref.org/works?query.title=", URLencode(title_search), "&query.container-title=", URLencode(journal_name))
+
+  response <- GET(url)
+  json_data <- fromJSON(content(response, "text", encoding = "UTF-8"))
+
+  df<-json_data$message$items %>% 
+  select(DOI,title,`short-container-title`) %>% unnest(c(title, `short-container-title`)) %>% 
+  filter(title==title_search&`short-container-title`=="EFSA Journal")
+  
+  df_dois_EFSA<-rbind(df,df_dois_EFSA)
+}
+
+```
+
+Studies for which the crossref extraction didn't work
+```{r}
+anti_join(StudyList_EFSA,df_dois_EFSA %>% rename(StudyNames=title),by="StudyNames")
+```
+
+Extraction of URL to download from Unpaywall
+```{r}
+empty<-data.frame()
+
+for(i in 1:nrow(df_dois_EFSA)){
+unpaywall_url<-paste0("https://api.unpaywall.org/v2/",df_dois_EFSA$DOI[i],"?email=marianna.rosso@uzh.ch")
+
+doi_info<-content(GET(unpaywall_url))
+if(is.null(doi_info$best_oa_location$url_for_pdf)){
+  url<-NA
+} else { url <- doi_info$best_oa_location$url_for_pdf}
+  df<-data.frame(doi=df_dois_EFSA$DOI[i],url=url)
+
+  empty<-rbind(empty,df)
+}
+```
+```{r}
+empty %>% filter(is.na(url))
+```
+
+```{r}
+empty_to_download<-empty %>%   
+  filter(!is.na(url)) %>%  
+  mutate(doi_file_name=gsub("/","_",doi))
+
+iterations_download<-nrow(empty_to_download)
+dois_with_errors <- c()
+
+suppressWarnings({
+for (i in 1:iterations_download) {
+  tryCatch({
+    download.file(empty_to_download$url[i], 
+                  paste0("downloaded/", empty_to_download$doi_file_name[i], ".pdf"), 
+                  quiet = TRUE, mode = "wb")
+  }, error = function(e) {
+    dois_with_errors <- c(dois_with_errors, empty_to_download$doi[i])
+  })
+
+  progress_percentage <- (i / iterations_download) * 100
+  cat(sprintf("\rProgress: %.2f%%", progress_percentage))
+  flush.console() 
+}
+})
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
