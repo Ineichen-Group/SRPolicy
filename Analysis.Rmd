@@ -1,0 +1,209 @@
+---
+title: "Analysis"
+output: html_document
+date: "2024-05-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE)
+```
+
+
+```{r}
+library(tidyr)
+library(stringr)
+library(dplyr)
+library(ggplot2)
+library(readxl)
+library(kableExtra)
+library(knitr)
+```
+
+
+```{r}
+DataExtractionTable <- read_excel("DataExtractionTable_JL.xlsx")
+```
+
+```{r}
+data<-DataExtractionTable%>%
+ mutate(across(c(everything(), -c(StudyId,G_Country,G_Year_Pub,TS_SR_n,TS_other,SR_n_databases,comments)), ~ifelse(.=="yes",TRUE,FALSE)))%>%
+ mutate(across(c(everything(), -c(StudyId,G_Country,G_Year_Pub,TS_SR_n,TS_other,SR_n_databases,comments)), ~ifelse(is.na(.),FALSE,.)))
+```
+
+## Type of study
+
+Important throughout: within one report more than one study can be found.
+
+```{r}
+data_summary_studytype<-data %>%
+  select(StudyId,G_Year_Pub,starts_with("TS_"),-c(TS_SR_n,TS_other)) %>% 
+  pivot_longer(cols = starts_with("TS_")) %>% 
+  filter(value==T) %>% 
+  group_by(G_Year_Pub,name) %>% 
+  count() %>% 
+  ungroup() %>% 
+  group_by(name) %>% mutate(n_per_studytype=sum(n)) %>% ungroup() %>% 
+  group_by(G_Year_Pub) %>% mutate(n_per_year=sum(n)) %>% ungroup() %>% 
+  mutate(name=gsub("TS_","",name),
+         name=gsub("SR_yn","SR",name),
+         name=gsub("Literature_review","Literature review",name),
+         name_label=paste0(name,", n = ",n_per_studytype)) 
+
+data_summary_studytype %>% 
+  select(name,n_per_studytype) %>% 
+  unique() %>% 
+  arrange(-n_per_studytype) %>% 
+  rbind(.,cbind(name="Total reports",n_per_studytype=nrow(DataExtractionTable))) %>% 
+  rename(`Study type`=name,
+         n=n_per_studytype) %>% 
+  kbl() %>% 
+  kable_styling(full_width = F,position ="left")
+```
+
+```{r}
+data_summary_studytype %>% 
+  ggplot(aes(x=G_Year_Pub,y=n))+
+  geom_bar(stat="identity",aes(fill=reorder(name_label,n_per_studytype)))+
+  theme_minimal()+
+  theme(
+    legend.title = element_blank(),
+    panel.grid.minor = element_blank()
+  )+
+  scale_fill_manual(values=c("#fd7f6f", "#7eb0d5", "#b2e061",  "#ffee65", "#beb9db"))+
+  labs(x="Year",y="n types of study")
+```
+
+```{r, fig.height=3,fig.width=7}
+data_summary_studytype %>% 
+  mutate(n_withoutstudy=nrow(DataExtractionTable)-n_per_studytype,
+    proportion_studypresent=n_per_studytype/nrow(DataExtractionTable),
+         proportion_study_notpresent=1-proportion_studypresent) %>% 
+  select(name,n_per_studytype,name_label,proportion_studypresent,proportion_study_notpresent,n_withoutstudy) %>% 
+  unique()  %>% 
+  pivot_longer(cols=c(n_per_studytype,n_withoutstudy),names_to="studypresent",values_to="proportion") %>%  
+  mutate(studypresent=ifelse(studypresent=="n_per_studytype","Yes","No")) %>% 
+  ggplot(aes(y=name,x=proportion))+
+  geom_col(position="stack",aes(fill=studypresent))+
+  theme_minimal()+
+  theme(axis.title.y = element_blank(),
+        legend.title = element_blank())+
+  scale_fill_manual(values=c("#7eb0d5", "#ffee65"))+
+  labs(x="n studies")
+```
+
+
+## Systematic Reviews items
+Important: even if a systematic review wasn't recorded because it didn't fit our inclusion criteria, we recorded each item independently (for instance: in a report a systematic review was conducted, a flowchart reported, involving two reviewers, but only 1 database was searched. This wouldn't categorize as SR, but the item flowchart and reviewers were recorded)
+
+```{r}
+data_summary_SRs<-data %>% 
+  select(G_Year_Pub,starts_with("SR_"),-SR_n_databases) %>% 
+  pivot_longer(!G_Year_Pub) %>% 
+  mutate(value=ifelse(value==T,1,0)) %>% 
+  group_by(G_Year_Pub,name,value) %>% 
+  summarise(n=sum(value)) %>% 
+  ungroup() %>% 
+  filter(value==1) %>% 
+  group_by(name) %>% mutate(n_per_studytype=sum(n)) %>% ungroup() %>% 
+  group_by(G_Year_Pub) %>% mutate(n_per_year=sum(n)) %>% ungroup()
+  
+data_summary_SRs %>% 
+select(name,n_per_studytype) %>% 
+  unique() %>% 
+  arrange(-n_per_studytype) %>% 
+  mutate(name=gsub("SR_","",name),
+         name=str_to_sentence(name),
+         name=gsub("Searchstring","Search string",name),
+         name=gsub("Metanaalysis","Meta-analysis",name)
+         ) %>% 
+  rbind(.,cbind(name="Total reports",n_per_studytype=nrow(DataExtractionTable))) %>% 
+  rename(`Study type`=name,
+         n=n_per_studytype) %>% 
+  kbl() %>% 
+  kable_styling(full_width = F,position ="left")
+```
+Search string: search string was present. Databases: 2 or more databases were searched. Flowchart: a flowchart was present. Reviewers: two or more reviewers screened the literature. Protocol: a a-priori protocol was written and published. Rob: a risk of bias analysis was performed. Meta-analysis: a meta-analysis was performed.
+
+
+```{r}
+data_summary_SRs %>% 
+  select(G_Year_Pub,name,n) %>% 
+  merge(.,data %>% group_by(G_Year_Pub) %>% count() %>% rename(n_studies_per_year=n),by="G_Year_Pub",all.y=T) %>% 
+  group_by(G_Year_Pub) %>% mutate(count_col_label=1:n()) %>% ungroup() %>% 
+  mutate(count_col_label=ifelse(count_col_label==1,n_studies_per_year,NA),
+         name=gsub("SR_","",name), 
+         name=str_to_sentence(name)) %>% 
+  ggplot(aes(x=G_Year_Pub))+
+  # geom_col(aes(y=count_col_label))+
+  geom_col(aes(y=n,fill=name))+
+  theme_minimal()+
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.title = element_blank()
+  )+
+  scale_fill_manual(values=c("#fd7f6f", "#7eb0d5", "#b2e061", "#bd7ebe", "#ffb55a", "#ffee65", "#beb9db"))+
+  labs(x="Year")
+```
+
+
+```{r}
+upper_plot_data<-data_summary_SRs %>% 
+  rename(nSR_per_year=n_per_year,
+         nSR_oer_item=n_per_studytype) %>% 
+  mutate(name=gsub("SR_","",name), 
+         name=str_to_sentence(name))
+
+
+lower_plot_data<-data %>% 
+  group_by(G_Year_Pub,TS_SR_yn) %>% 
+  count() %>% 
+  mutate(TS_SR_yn=ifelse(TS_SR_yn==T,"Systematic Reviews","Other studies"))
+
+
+ggplot()+
+  geom_bar(data=upper_plot_data,aes(x=G_Year_Pub,y=-n/2,fill=name),stat="identity")+
+  geom_bar(data=lower_plot_data,aes(x=G_Year_Pub,y=n,fill=TS_SR_yn),stat="identity")+   scale_fill_manual(values=c("Databases"="#fd7f6f",
+                             "Flowchart"= "#7eb0d5",
+                             "Metanaalysis"= "#b2e061",
+                             "Protocol"= "#bd7ebe",
+                             "Reviewers"= "#ffb55a",
+                             "Rob"= "#ffee65",
+                             "Searchstring"= "#beb9db",
+                             "Systematic Reviews"="gray50",
+                             "Other studies"="gray80"),
+                             breaks=c("Other studies",
+"Systematic Reviews",
+"Searchstring",
+"Rob",
+"Reviewers",
+"Protocol",
+"Metanaalysis",
+"Flowchart",
+"Databases"
+
+))+  theme_minimal()+
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.title = element_blank()
+  )+
+  scale_y_continuous(breaks=c(0,10,20))+
+  labs(y="proportion of SR items, n reports",x="Year of publication")
+
+```
+
+
+
+### Databases used
+```{r}
+databases_SR_n<-pull(data %>% 
+  select(SR_n_databases) %>% 
+  drop_na())
+```
+
+The number database used ranged from `r min(databases_SR_n)` to `r max(databases_SR_n)`, with a median of `r median(databases_SR_n)`
+
+
+
+
+
+
