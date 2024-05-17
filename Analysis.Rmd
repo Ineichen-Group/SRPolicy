@@ -1,11 +1,13 @@
 ---
 title: "Analysis"
-output: html_document
+output:
+  html_document:
+    df_print: paged
 date: "2024-05-14"
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE)
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, results='asis')
 ```
 
 
@@ -22,9 +24,8 @@ library(knitr)
 
 ```{r}
 DataExtractionTable <- read_excel("DataExtractionTable_JL.xlsx")
-```
 
-```{r}
+
 data<-DataExtractionTable%>%
  mutate(across(c(everything(), -c(StudyId,G_Country,G_Year_Pub,TS_SR_n,TS_other,SR_n_databases,comments)), ~ifelse(.=="yes",TRUE,FALSE)))%>%
  mutate(across(c(everything(), -c(StudyId,G_Country,G_Year_Pub,TS_SR_n,TS_other,SR_n_databases,comments)), ~ifelse(is.na(.),FALSE,.)))
@@ -33,6 +34,7 @@ data<-DataExtractionTable%>%
 ## Type of study
 
 Important throughout: within one report more than one study can be found.
+
 
 ```{r}
 data_summary_studytype<-data %>%
@@ -56,9 +58,13 @@ data_summary_studytype %>%
   rbind(.,cbind(name="Total reports",n_per_studytype=nrow(DataExtractionTable))) %>% 
   rename(`Study type`=name,
          n=n_per_studytype) %>% 
-  kbl() %>% 
+  kable(caption = "Overview of the types of studies extracted",booktabs = TRUE) %>% 
   kable_styling(full_width = F,position ="left")
 ```
+<br>
+<br>
+
+#### Graphical overview of the studies extracted over the years
 
 ```{r}
 data_summary_studytype %>% 
@@ -72,6 +78,10 @@ data_summary_studytype %>%
   scale_fill_manual(values=c("#fd7f6f", "#7eb0d5", "#b2e061",  "#ffee65", "#beb9db"))+
   labs(x="Year",y="n types of study")
 ```
+<br>
+<br>
+
+#### Proportion of each study type over all the studies screened
 
 ```{r, fig.height=3,fig.width=7}
 data_summary_studytype %>% 
@@ -90,10 +100,12 @@ data_summary_studytype %>%
   scale_fill_manual(values=c("#7eb0d5", "#ffee65"))+
   labs(x="n studies")
 ```
-
+<br>
+<br>
 
 ## Systematic Reviews items
 Important: even if a systematic review wasn't recorded because it didn't fit our inclusion criteria, we recorded each item independently (for instance: in a report a systematic review was conducted, a flowchart reported, involving two reviewers, but only 1 database was searched. This wouldn't categorize as SR, but the item flowchart and reviewers were recorded)
+<br>
 
 ```{r}
 data_summary_SRs<-data %>% 
@@ -119,12 +131,15 @@ select(name,n_per_studytype) %>%
   rbind(.,cbind(name="Total reports",n_per_studytype=nrow(DataExtractionTable))) %>% 
   rename(`Study type`=name,
          n=n_per_studytype) %>% 
-  kbl() %>% 
+  kbl(caption = "Overview of the types of SR items extracted") %>% 
   kable_styling(full_width = F,position ="left")
 ```
 Search string: search string was present. Databases: 2 or more databases were searched. Flowchart: a flowchart was present. Reviewers: two or more reviewers screened the literature. Protocol: a a-priori protocol was written and published. Rob: a risk of bias analysis was performed. Meta-analysis: a meta-analysis was performed.
 
+<br>
+<br>
 
+#### SR items extracted over the years
 ```{r}
 data_summary_SRs %>% 
   select(G_Year_Pub,name,n) %>% 
@@ -145,6 +160,9 @@ data_summary_SRs %>%
   labs(x="Year")
 ```
 
+#### SR items extracted over the years
+Top part of the figure: studies extracted and proportion of SRs (dark gray) of the total studies extracted per year (light gray). Lower part of the figure: proportion of the various items of SRs extracted. The idea was to display everything in one figure **but** it has the problem of the y-scale. The number of studies has a straightforward scale, but if the raw numbers are diplayed in the lower part of the graph, it would not match the upper part. So this is still a work-in-progress
+<br>
 
 ```{r}
 upper_plot_data<-data_summary_SRs %>% 
@@ -191,7 +209,8 @@ ggplot()+
 
 ```
 
-
+<br>
+<br>
 
 ### Databases used
 ```{r}
@@ -203,7 +222,7 @@ databases_SR_n<-pull(data %>%
 The number database used ranged from `r min(databases_SR_n)` to `r max(databases_SR_n)`, with a median of `r median(databases_SR_n)`
 
 
-
+<br><br>
 
 
 
