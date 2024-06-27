@@ -6,19 +6,30 @@ date: "2024-02-23"
 
 ```{r message=FALSE, warning=FALSE}
 library(dplyr)
+library(readr)
+library(rentrez)
+library(writexl)
 
-StudyList_EFSA <- read_csv("StudyList_EFSA.csv") %>% rename(StudyNames=1)
+StudyList_EFSA <- read_csv("StudyList_EFSA.csv") 
+
 ```
 
-Extraction and IRR allocation
+
+(IRR) allocation
 ```{r message=FALSE, warning=FALSE}
 n_IRR<-ceiling(nrow(StudyList_EFSA)*0.2)
 
-data.frame(StudyList_EFSA,reviewer=sample(c(rep("IRR",n_IRR),
+df_assign<-data.frame(StudyList_EFSA,reviewer=sample(c(rep("IRR",n_IRR),
 rep("MR",(nrow(StudyList_EFSA)-n_IRR)/2),
 rep("JL",(nrow(StudyList_EFSA)-n_IRR)/2)))) %>% 
-  write.csv(.,"StudyList_EFSA_assigned.csv")
+  sample_n(.,nrow(.))
+
+list_of_dfs <- split(df_assign, df_assign$reviewer)
+
+write_xlsx(list_of_dfs, "StudyList_EFSA_assigned.xlsx")
 ```
+
+
 
 
 

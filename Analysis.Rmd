@@ -10,7 +10,6 @@ date: "2024-05-14"
 knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, results='asis')
 ```
 
-
 ```{r}
 library(tidyr)
 library(stringr)
@@ -19,93 +18,226 @@ library(ggplot2)
 library(readxl)
 library(kableExtra)
 library(knitr)
+library(readr)
+library(rcrossref)
+library(writexl)
+
+StudyList_EFSA <- read_excel("StudyList_EFSA_furtherextraction.xlsx", 
+    sheet = "All_furtherextraction")
 ```
 
+```{r message=FALSE, warning=FALSE}
+# EFSA_dois<-data.frame()
+# 
+# for(i in StudyList_EFSA$Title){
+# 
+# result <- cr_works(query = i, limit = 1)$data$doi
+# 
+# if (is.na(result)){
+#   result<-NA
+# } else {
+#   result<-result
+# }
+# 
+# df<-data.frame(cbind(Title=i,doi=result))
+# EFSA_dois<-rbind(EFSA_dois,df)
+# 
+# }
+
+# write_xlsx(EFSA_dois,"EFSA_dois.xlsx")
+
+EFSA_dois <- read_excel("EFSA_dois.xlsx")
+```
+
+```{r}
+Data_studyscopes<-StudyList_EFSA %>% 
+  rename(Subscope=5) %>% 
+  merge(.,EFSA_dois,by="Title")
+```
+
+# Species
+
+(I actually don't think we need a figure of this but I was trying something out)
+
+```{r}
+Species_used_summary<-Data_studyscopes%>%
+  separate_rows(species, sep = ",\\s*") %>% 
+  select(species) %>% 
+  filter(!is.na(species)) %>% 
+  mutate(species=case_when(
+    species=="horse"~"horses",
+    species=="boar"~"boars",
+    species=="quail"~"quails",
+    species=="sheeps"~"sheep",
+    species=="NA"~NA,
+    TRUE~species
+  )) %>% 
+  group_by(species) %>% 
+  count() %>% 
+  arrange(-n)
+
+Species_used_summary%>% 
+  kbl(caption = "Overview of the species in focus") %>% 
+  kable_styling(full_width = F,position ="left")%>%
+  scroll_box(height = "400px")
+
+Species_used_summary %>%
+  mutate(species=ifelse(n<10,"Others",species)) %>% 
+  group_by(species) %>% 
+  summarise(n=sum(n)) %>% 
+  mutate(order=ifelse(species=="Others",1,2)) %>% 
+  arrange(-order,-n) %>% 
+  mutate(order_y=1:n(),
+         label=paste0(str_to_title(species),", n = ",n),
+         cumsum=cumsum(n)) %>% 
+ggplot(aes(x = 1, y = n, fill = reorder(label,-order_y))) +
+  geom_col(width = 0.3)+
+  geom_text(aes(label=label,y=cumsum-n/2),angle=270,hjust=0.5)+
+    scale_fill_manual(values=c("#dedede","#fd7f6f", "#7eb0d5", "#b2e061", "#bd7ebe", "#ffb55a", "#ffee65", "#beb9db"),name="Species")+
+  scale_x_reverse()+
+  theme_minimal()+
+  theme(
+    legend.title = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom",
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    panel.grid.major.y = element_blank()
+  )+
+  coord_flip()
+```
+
+# Scope of the study
+
+```{r}
+Studyscopes_summary<-Data_studyscopes %>% 
+  mutate(Scope=case_when(
+    Scope=="disesase"~"disease",
+    TRUE~Scope
+  )) %>% 
+  group_by(Scope,Subscope) %>% 
+  summarise(n_per_subscope=n()) %>% 
+  ungroup() 
+
+Studyscopes_summary%>% 
+  kbl(caption = "Overview of the types of SR items extracted") %>% 
+  kable_styling(full_width = F,position ="left")
+
+Studyscopes_summary %>% 
+  group_by(Scope) %>% 
+  mutate(n_per_scope=sum(n_per_subscope))%>% 
+  select(Scope,n_per_scope) %>% unique() %>% 
+  kbl(caption = "Overview of the scope of each report") %>% 
+  kable_styling(full_width = F,position ="left")
+```
 
 ```{r}
 DataExtractionTable <- read_excel("DataExtractionTable_JL.xlsx")
 
-
-data<-DataExtractionTable%>%
+data<-
+  DataExtractionTable %>% 
+  mutate(TS_other=ifelse(grepl("ad hoc",TS_other),"AHL ad-hoc",TS_other)) %>% 
+  mutate(TS_other=case_when(
+    TS_other=="Evaluation of four provided studies"~"Evaluation of previous studies",
+    TS_other=="Evaluation of three provided studies"~"Evaluation of previous studies",
+    TS_other=="expert knowledge elicitation,"~"expert knowledge elicitation",
+    TS_other=="qualtive"~"qualitative",
+    TS_other=="risk assesment"~"risk assessment",
+    TS_other=="risk assessment and questionaires for EU countries"~"risk assessment, questionaire",
+    TS_other=="study designs"~"study design",
+    TS_other=="two stakeholder meetings"~"stakeholder meeting",
+    TRUE~TS_other
+  )) %>% 
+    mutate(TS_AHL=ifelse(TS_other=="AHL ad-hoc","yes",NA))%>%
  mutate(across(c(everything(), -c(StudyId,G_Country,G_Year_Pub,TS_SR_n,TS_other,SR_n_databases,comments)), ~ifelse(.=="yes",TRUE,FALSE)))%>%
  mutate(across(c(everything(), -c(StudyId,G_Country,G_Year_Pub,TS_SR_n,TS_other,SR_n_databases,comments)), ~ifelse(is.na(.),FALSE,.)))
 ```
 
-## Type of study
+# Type of study
 
 Important throughout: within one report more than one study can be found.
 
+```{r, fig.height=3,fig.width=7}
+data_summary_studytype<-
+  data %>%
+  select(StudyId,G_Year_Pub,starts_with("TS_"),-c(TS_SR_n,TS_other)) %>% 
+  pivot_longer(cols = starts_with("TS_")) %>% 
+  filter(value==T) %>% 
+  group_by(name) %>% 
+  summarise(n_per_studytype=n()) %>% 
+  ungroup() %>% 
+  mutate(name=gsub("TS_","",name),
+         name=case_when(name=="Literature_review"~"Literature review",
+                   name=="SR_yn"~"Systematic review",
+                   name=="Primary_study"~"Primary study",
+                   TRUE~name
+                   ))
+
+data_summary_studytype %>%
+  kbl(caption = "Overview of the study types") %>% 
+  kable_styling(full_width = F,position ="left")
+
+data_summary_studytype %>% 
+  mutate(n_withoutstudy=nrow(DataExtractionTable)-n_per_studytype,
+    proportion_studypresent=n_per_studytype/nrow(DataExtractionTable),
+         proportion_study_notpresent=1-proportion_studypresent) %>% 
+  unique()  %>% 
+  pivot_longer(cols=c(n_per_studytype,n_withoutstudy),names_to="studypresent",values_to="proportion") %>%  
+  mutate(studypresent=ifelse(studypresent=="n_per_studytype","Present","Not present")) %>%
+  merge(.,data_summary_studytype,by="name") %>% 
+  ggplot(aes(y=reorder(name,n_per_studytype),x=proportion))+
+  geom_col(position="stack",aes(fill=studypresent))+
+  geom_text(data=. %>% filter(studypresent=="Present"),aes(label=paste0(name,", n = ",proportion),x=-2),size=2.8,hjust=1, color="#585858")+
+  theme_minimal()+
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        legend.title = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.grid.major.y =element_blank())+
+  scale_fill_manual(values=c("#7eb0d5", "#ffee65"))+
+  scale_x_continuous(breaks=seq(0,150,50))+
+  labs(x="n studies")+
+  coord_cartesian(xlim=c(-40,NA))
+```
+
+<br> <br>
+
+### Graphical overview of the studies extracted over the years
 
 ```{r}
-data_summary_studytype<-data %>%
+data %>%
   select(StudyId,G_Year_Pub,starts_with("TS_"),-c(TS_SR_n,TS_other)) %>% 
   pivot_longer(cols = starts_with("TS_")) %>% 
   filter(value==T) %>% 
   group_by(G_Year_Pub,name) %>% 
   count() %>% 
   ungroup() %>% 
-  group_by(name) %>% mutate(n_per_studytype=sum(n)) %>% ungroup() %>% 
-  group_by(G_Year_Pub) %>% mutate(n_per_year=sum(n)) %>% ungroup() %>% 
   mutate(name=gsub("TS_","",name),
-         name=gsub("SR_yn","SR",name),
-         name=gsub("Literature_review","Literature review",name),
-         name_label=paste0(name,", n = ",n_per_studytype)) 
-
-data_summary_studytype %>% 
-  select(name,n_per_studytype) %>% 
-  unique() %>% 
-  arrange(-n_per_studytype) %>% 
-  rbind(.,cbind(name="Total reports",n_per_studytype=nrow(DataExtractionTable))) %>% 
-  rename(`Study type`=name,
-         n=n_per_studytype) %>% 
-  kable(caption = "Overview of the types of studies extracted",booktabs = TRUE) %>% 
-  kable_styling(full_width = F,position ="left")
-```
-<br>
-<br>
-
-#### Graphical overview of the studies extracted over the years
-
-```{r}
-data_summary_studytype %>% 
+         name=case_when(name=="Literature_review"~"Literature review",
+                   name=="SR_yn"~"Systematic review",
+                   name=="Primary_study"~"Primary study",
+                   TRUE~name
+                   )) %>% 
+  mutate(name=factor(name,levels=c("Primary study","Observational","Database","Survey","Systematic review","AHL","Literature review"))) %>% 
+  # mutate(name=factor(name,levels=c("Literature review","AHL","Systematic review","Survey","Database","Observational","Primary study"))) %>% 
   ggplot(aes(x=G_Year_Pub,y=n))+
-  geom_bar(stat="identity",aes(fill=reorder(name_label,n_per_studytype)))+
+  geom_bar(stat="identity",aes(fill=name))+
   theme_minimal()+
   theme(
     legend.title = element_blank(),
     panel.grid.minor = element_blank()
   )+
-  scale_fill_manual(values=c("#fd7f6f", "#7eb0d5", "#b2e061",  "#ffee65", "#beb9db"))+
+    scale_fill_manual(values=c("#b2e061", "#fd7f6f", "#ffee65", "#beb9db", "#ffb55a", "#7eb0d5","#dedede"))+
+
   labs(x="Year",y="n types of study")
+
 ```
-<br>
-<br>
 
-#### Proportion of each study type over all the studies screened
+<br> <br>
 
-```{r, fig.height=3,fig.width=7}
-data_summary_studytype %>% 
-  mutate(n_withoutstudy=nrow(DataExtractionTable)-n_per_studytype,
-    proportion_studypresent=n_per_studytype/nrow(DataExtractionTable),
-         proportion_study_notpresent=1-proportion_studypresent) %>% 
-  select(name,n_per_studytype,name_label,proportion_studypresent,proportion_study_notpresent,n_withoutstudy) %>% 
-  unique()  %>% 
-  pivot_longer(cols=c(n_per_studytype,n_withoutstudy),names_to="studypresent",values_to="proportion") %>%  
-  mutate(studypresent=ifelse(studypresent=="n_per_studytype","Yes","No")) %>% 
-  ggplot(aes(y=name,x=proportion))+
-  geom_col(position="stack",aes(fill=studypresent))+
-  theme_minimal()+
-  theme(axis.title.y = element_blank(),
-        legend.title = element_blank())+
-  scale_fill_manual(values=c("#7eb0d5", "#ffee65"))+
-  labs(x="n studies")
-```
-<br>
-<br>
+# Systematic Reviews items
 
-## Systematic Reviews items
-Important: even if a systematic review wasn't recorded because it didn't fit our inclusion criteria, we recorded each item independently (for instance: in a report a systematic review was conducted, a flowchart reported, involving two reviewers, but only 1 database was searched. This wouldn't categorize as SR, but the item flowchart and reviewers were recorded)
-<br>
+Important: even if a systematic review wasn't recorded because it didn't fit our inclusion criteria, we recorded each item independently (for instance: in a report a systematic review was conducted, a flowchart reported, involving two reviewers, but only 1 database was searched. This wouldn't categorize as SR, but the item flowchart and reviewers were recorded) <br>
 
 ```{r}
 data_summary_SRs<-data %>% 
@@ -134,14 +266,18 @@ select(name,n_per_studytype) %>%
   kbl(caption = "Overview of the types of SR items extracted") %>% 
   kable_styling(full_width = F,position ="left")
 ```
+
 Search string: search string was present. Databases: 2 or more databases were searched. Flowchart: a flowchart was present. Reviewers: two or more reviewers screened the literature. Protocol: a a-priori protocol was written and published. Rob: a risk of bias analysis was performed. Meta-analysis: a meta-analysis was performed.
 
-<br>
-<br>
+<br> <br>
 
-#### SR items extracted over the years
+### SR items extracted over the years
+
 ```{r}
 data_summary_SRs %>% 
+  filter(name!="SR_label_SR") %>% 
+  filter(name!="SR_label_ELS") %>% 
+  filter(name!="SR_label_LR") %>% 
   select(G_Year_Pub,name,n) %>% 
   merge(.,data %>% group_by(G_Year_Pub) %>% count() %>% rename(n_studies_per_year=n),by="G_Year_Pub",all.y=T) %>% 
   group_by(G_Year_Pub) %>% mutate(count_col_label=1:n()) %>% ungroup() %>% 
@@ -160,9 +296,9 @@ data_summary_SRs %>%
   labs(x="Year")
 ```
 
-#### SR items extracted over the years
-Top part of the figure: studies extracted and proportion of SRs (dark gray) of the total studies extracted per year (light gray). Lower part of the figure: proportion of the various items of SRs extracted. The idea was to display everything in one figure **but** it has the problem of the y-scale. The number of studies has a straightforward scale, but if the raw numbers are diplayed in the lower part of the graph, it would not match the upper part. So this is still a work-in-progress
-<br>
+### SR items extracted over the years
+
+Top part of the figure: studies extracted and proportion of SRs (dark gray) of the total studies extracted per year (light gray). Lower part of the figure: proportion of the various items of SRs extracted. The idea was to display everything in one figure **but** it has the problem of the y-scale. The number of studies has a straightforward scale, but if the raw numbers are diplayed in the lower part of the graph, it would not match the upper part. So this is still a work-in-progress <br>
 
 ```{r}
 upper_plot_data<-data_summary_SRs %>% 
@@ -209,10 +345,10 @@ ggplot()+
 
 ```
 
-<br>
-<br>
+<br> <br>
 
 ### Databases used
+
 ```{r}
 databases_SR_n<-pull(data %>% 
   select(SR_n_databases) %>% 
@@ -221,8 +357,23 @@ databases_SR_n<-pull(data %>%
 
 The number database used ranged from `r min(databases_SR_n)` to `r max(databases_SR_n)`, with a median of `r median(databases_SR_n)`
 
+### Classification of reviews
+
+```{r}
+items_extracted_SR_count<-data %>% 
+  select(TS_SR_yn,c(starts_with("SR_"),-SR_n_databases,-starts_with("SR_label_"))) %>%
+  mutate(Any_SR_True = rowSums(select(., starts_with("SR_")) == TRUE) > 0) %>% 
+  select(TS_SR_yn,Any_SR_True) %>% 
+  summarise(SR_extracted=sum(TS_SR_yn),
+            SR_items=sum(Any_SR_True))
+```
+
+`r sum(data$SR_label_ELS)` reviews were classified as ELS (extensive literature reviews). `r sum(data$SR_label_SR)` reviews were classified as systematic reviews.`r sum(data$TS_SR_yn)-(sum(data$SR_label_ELS)+sum(data$SR_label_SR))` were classified as neither, but were annotated by us as SR.
+
+Even though only `r items_extracted_SR_count$SR_extracted` SRs were extracted according to our a-priori criteria, various items of a systematic review were extracted from `r items_extracted_SR_count$SR_items` studies.
 
 <br><br>
 
-
-
+```{r}
+# save.image("image.RData")
+```

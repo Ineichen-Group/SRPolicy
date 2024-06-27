@@ -22,6 +22,9 @@ StudyList_EFSA
 
 ```{r}
 df_dois_EFSA<-data.frame()
+
+
+
 for(i in 1:nrow(StudyList_EFSA)){
   title_search<-StudyList_EFSA$StudyNames[i]
   journal_name <- "EFSA Journal"
@@ -49,6 +52,7 @@ Extraction of URL to download from Unpaywall
 ```{r}
 empty<-data.frame()
 
+i<-5
 for(i in 1:nrow(df_dois_EFSA)){
 unpaywall_url<-paste0("https://api.unpaywall.org/v2/",df_dois_EFSA$DOI[i],"?email=marianna.rosso@uzh.ch")
 
@@ -61,6 +65,7 @@ if(is.null(doi_info$best_oa_location$url_for_pdf)){
   empty<-rbind(empty,df)
 }
 ```
+
 ```{r}
 empty %>% filter(is.na(url))
 ```
