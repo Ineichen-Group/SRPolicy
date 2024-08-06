@@ -21,7 +21,10 @@ library(knitr)
 library(readr)
 library(rcrossref)
 library(writexl)
+```
 
+
+```{r}
 StudyList_EFSA <- read_excel("StudyList_EFSA_furtherextraction.xlsx", 
     sheet = "All_furtherextraction")
 ```
@@ -59,7 +62,7 @@ Data_studyscopes<-StudyList_EFSA %>%
 
 (I actually don't think we need a figure of this but I was trying something out)
 
-```{r}
+```{r fig.width=3,fig.height=6}
 Species_used_summary<-Data_studyscopes%>%
   separate_rows(species, sep = ",\\s*") %>% 
   select(species) %>% 
@@ -92,19 +95,18 @@ Species_used_summary %>%
          cumsum=cumsum(n)) %>% 
 ggplot(aes(x = 1, y = n, fill = reorder(label,-order_y))) +
   geom_col(width = 0.3)+
-  geom_text(aes(label=label,y=cumsum-n/2),angle=270,hjust=0.5)+
+  geom_text(aes(label=label,y=cumsum-n/2),hjust=0.5)+
     scale_fill_manual(values=c("#dedede","#fd7f6f", "#7eb0d5", "#b2e061", "#bd7ebe", "#ffb55a", "#ffee65", "#beb9db"),name="Species")+
-  scale_x_reverse()+
+  scale_y_reverse()+
   theme_minimal()+
   theme(
     legend.title = element_blank(),
     panel.grid.minor = element_blank(),
-    legend.position = "bottom",
-    axis.title.y = element_blank(),
-    axis.text.y = element_blank(),
-    panel.grid.major.y = element_blank()
-  )+
-  coord_flip()
+    legend.position = "none",
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    panel.grid.major = element_blank()
+  )
 ```
 
 # Scope of the study
@@ -153,7 +155,7 @@ data<-
  mutate(across(c(everything(), -c(StudyId,G_Country,G_Year_Pub,TS_SR_n,TS_other,SR_n_databases,comments)), ~ifelse(is.na(.),FALSE,.)))
 ```
 
-# Type of study
+# Figure 1
 
 Important throughout: within one report more than one study can be found.
 
@@ -192,20 +194,25 @@ data_summary_studytype %>%
   theme(axis.title.y = element_blank(),
         axis.text.y = element_blank(),
         legend.title = element_blank(),
+    plot.margin = margin(0, 0, 0, 10),
         panel.grid.minor = element_blank(),
+        legend.position = "none",
         panel.grid.major.y =element_blank())+
   scale_fill_manual(values=c("#7eb0d5", "#ffee65"))+
   scale_x_continuous(breaks=seq(0,150,50))+
   labs(x="n studies")+
   coord_cartesian(xlim=c(-40,NA))
+
+ggsave("Figure1.png",dpi=300,height=3,width=7,bg="white")
 ```
 
 <br> <br>
 
-### Graphical overview of the studies extracted over the years
+# Figure 2
+Overview of the types of studies over the years (percentage of all the studies for that year)
 
 ```{r}
-data %>%
+data %>% 
   select(StudyId,G_Year_Pub,starts_with("TS_"),-c(TS_SR_n,TS_other)) %>% 
   pivot_longer(cols = starts_with("TS_")) %>% 
   filter(value==T) %>% 
@@ -217,19 +224,76 @@ data %>%
                    name=="SR_yn"~"Systematic review",
                    name=="Primary_study"~"Primary study",
                    TRUE~name
-                   )) %>% 
-  mutate(name=factor(name,levels=c("Primary study","Observational","Database","Survey","Systematic review","AHL","Literature review"))) %>% 
-  # mutate(name=factor(name,levels=c("Literature review","AHL","Systematic review","Survey","Database","Observational","Primary study"))) %>% 
-  ggplot(aes(x=G_Year_Pub,y=n))+
-  geom_bar(stat="identity",aes(fill=name))+
+                   ))  %>% 
+  # mutate(name=factor(name,levels=c("Primary study","Observational","Database","Survey","Systematic review","AHL","Literature review"))) %>% 
+  group_by(name) %>% mutate(order_facet=sum(n)) %>% ungroup() %>% 
+  mutate(facet_var_ordered = factor(name, levels = unique(name[order(-order_facet)]))) %>% 
+  merge(.,data %>% group_by(G_Year_Pub) %>% count() %>% rename(n_per_year=n),by="G_Year_Pub") %>% 
+   mutate(perc_TS=n/n_per_year) %>% 
+  filter(name!="Primary study") %>%
+  ggplot(aes(x=G_Year_Pub,y=perc_TS))+
+  geom_bar(stat="identity",aes(fill=name)) +
+  facet_wrap(.~facet_var_ordered)+
+  scale_fill_manual(values=c("AHL"="#fd7f6f","Observational"= "#7eb0d5","Database"= "#b2e061","Systematic review"= "#bd7ebe","Survey"= "#ffb55a","Literature review"= "#ffee65"))+
   theme_minimal()+
   theme(
+    panel.grid.minor = element_blank(),
     legend.title = element_blank(),
-    panel.grid.minor = element_blank()
+    legend.position = "none"
   )+
-    scale_fill_manual(values=c("#b2e061", "#fd7f6f", "#ffee65", "#beb9db", "#ffb55a", "#7eb0d5","#dedede"))+
+  labs(y="Percentage of all studies", x="Year")
 
-  labs(x="Year",y="n types of study")
+
+ggsave("Figure2.png",dpi=300,height=4.5,width=7,bg="white")
+
+```
+
+
+<br> <br>
+
+# Figure 3
+
+```{r}
+data %>% 
+  filter(TS_SR_yn==T) %>% 
+  select(StudyId,G_Year_Pub,SR_protocol,SR_databases,SR_searchstring,SR_reviewers,SR_flowchart,SR_rob,SR_metanaalysis) %>% 
+  group_by(G_Year_Pub) %>% 
+  mutate(SRs_per_Year=n()) %>%
+  ungroup() %>% 
+  pivot_longer(!c(StudyId,G_Year_Pub,SRs_per_Year)) %>% 
+  filter(value==T) %>% 
+  group_by(G_Year_Pub) %>% mutate(order_label=1:n(),label=ifelse(order_label==1,SRs_per_Year,NA)) %>% ungroup() %>% 
+  group_by(name,G_Year_Pub,label) %>% 
+  count() %>% 
+  merge(.,data %>% filter(TS_SR_yn==T) %>% group_by(G_Year_Pub) %>% count() %>% rename(n_SR_per_Year=n),by="G_Year_Pub") %>% 
+  mutate(perc_SR=n/n_SR_per_Year) %>% 
+  filter(name!="SR_databases") %>%
+  mutate(name=gsub("SR_","",name),
+         name=str_to_title(name))  %>% 
+  mutate(name=case_when(
+    name=="Searchstring"~"Search string",
+    name=="Metanaalysis"~"Meta-analysis",
+    name=="Rob"~"Risk of bias",
+    TRUE~name
+  )) %>% 
+  group_by(name) %>% mutate(order_facet=sum(n)) %>% ungroup() %>%
+  mutate(facet_var_ordered = factor(name, levels = unique(name[order(-order_facet)]))) %>% 
+  ggplot(aes(x=G_Year_Pub,y=perc_SR))+
+  geom_bar(stat="identity",aes(fill=name)) +
+  # geom_text(aes(label=label,y=0))+
+  facet_wrap(.~facet_var_ordered)+
+  scale_fill_manual(values=c("#fd7f6f", "#7eb0d5", "#b2e061", "#bd7ebe", "#ffb55a", "#ffee65", "#beb9db"))+
+  theme_minimal()+
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.title = element_blank(),
+    plot.margin = margin(0, 15, 0, 0),
+    legend.position = "none"
+  )+
+  labs(y="Percentage of all studies", x="Year")
+
+ggsave("Figure3.png",dpi=300,height=4.5,width=7,bg="white")
+
 
 ```
 
@@ -267,83 +331,6 @@ select(name,n_per_studytype) %>%
   kable_styling(full_width = F,position ="left")
 ```
 
-Search string: search string was present. Databases: 2 or more databases were searched. Flowchart: a flowchart was present. Reviewers: two or more reviewers screened the literature. Protocol: a a-priori protocol was written and published. Rob: a risk of bias analysis was performed. Meta-analysis: a meta-analysis was performed.
-
-<br> <br>
-
-### SR items extracted over the years
-
-```{r}
-data_summary_SRs %>% 
-  filter(name!="SR_label_SR") %>% 
-  filter(name!="SR_label_ELS") %>% 
-  filter(name!="SR_label_LR") %>% 
-  select(G_Year_Pub,name,n) %>% 
-  merge(.,data %>% group_by(G_Year_Pub) %>% count() %>% rename(n_studies_per_year=n),by="G_Year_Pub",all.y=T) %>% 
-  group_by(G_Year_Pub) %>% mutate(count_col_label=1:n()) %>% ungroup() %>% 
-  mutate(count_col_label=ifelse(count_col_label==1,n_studies_per_year,NA),
-         name=gsub("SR_","",name), 
-         name=str_to_sentence(name)) %>% 
-  ggplot(aes(x=G_Year_Pub))+
-  # geom_col(aes(y=count_col_label))+
-  geom_col(aes(y=n,fill=name))+
-  theme_minimal()+
-  theme(
-    panel.grid.minor = element_blank(),
-    legend.title = element_blank()
-  )+
-  scale_fill_manual(values=c("#fd7f6f", "#7eb0d5", "#b2e061", "#bd7ebe", "#ffb55a", "#ffee65", "#beb9db"))+
-  labs(x="Year")
-```
-
-### SR items extracted over the years
-
-Top part of the figure: studies extracted and proportion of SRs (dark gray) of the total studies extracted per year (light gray). Lower part of the figure: proportion of the various items of SRs extracted. The idea was to display everything in one figure **but** it has the problem of the y-scale. The number of studies has a straightforward scale, but if the raw numbers are diplayed in the lower part of the graph, it would not match the upper part. So this is still a work-in-progress <br>
-
-```{r}
-upper_plot_data<-data_summary_SRs %>% 
-  rename(nSR_per_year=n_per_year,
-         nSR_oer_item=n_per_studytype) %>% 
-  mutate(name=gsub("SR_","",name), 
-         name=str_to_sentence(name))
-
-
-lower_plot_data<-data %>% 
-  group_by(G_Year_Pub,TS_SR_yn) %>% 
-  count() %>% 
-  mutate(TS_SR_yn=ifelse(TS_SR_yn==T,"Systematic Reviews","Other studies"))
-
-
-ggplot()+
-  geom_bar(data=upper_plot_data,aes(x=G_Year_Pub,y=-n/2,fill=name),stat="identity")+
-  geom_bar(data=lower_plot_data,aes(x=G_Year_Pub,y=n,fill=TS_SR_yn),stat="identity")+   scale_fill_manual(values=c("Databases"="#fd7f6f",
-                             "Flowchart"= "#7eb0d5",
-                             "Metanaalysis"= "#b2e061",
-                             "Protocol"= "#bd7ebe",
-                             "Reviewers"= "#ffb55a",
-                             "Rob"= "#ffee65",
-                             "Searchstring"= "#beb9db",
-                             "Systematic Reviews"="gray50",
-                             "Other studies"="gray80"),
-                             breaks=c("Other studies",
-"Systematic Reviews",
-"Searchstring",
-"Rob",
-"Reviewers",
-"Protocol",
-"Metanaalysis",
-"Flowchart",
-"Databases"
-
-))+  theme_minimal()+
-  theme(
-    panel.grid.minor = element_blank(),
-    legend.title = element_blank()
-  )+
-  scale_y_continuous(breaks=c(0,10,20))+
-  labs(y="proportion of SR items, n reports",x="Year of publication")
-
-```
 
 <br> <br>
 
@@ -377,3 +364,119 @@ Even though only `r items_extracted_SR_count$SR_extracted` SRs were extracted ac
 ```{r}
 # save.image("image.RData")
 ```
+
+
+
+
+### Additional figures - not in the MS
+```{r include=F}
+data_summary_SRs %>% 
+  filter(name!="SR_label_SR") %>% 
+  filter(name!="SR_label_ELS") %>% 
+  filter(name!="SR_label_LR") %>% 
+  select(G_Year_Pub,name,n) %>% 
+  merge(.,data %>% group_by(G_Year_Pub) %>% count() %>% rename(n_studies_per_year=n),by="G_Year_Pub",all.y=T) %>% 
+  group_by(G_Year_Pub) %>% mutate(count_col_label=1:n()) %>% ungroup() %>% 
+  mutate(count_col_label=ifelse(count_col_label==1,n_studies_per_year,NA),
+         name=gsub("SR_","",name), 
+         name=str_to_sentence(name)) %>% 
+  ggplot(aes(x=G_Year_Pub))+
+  # geom_col(aes(y=count_col_label))+
+  geom_bar(aes(y=n,fill=name),stat="identity",position="fill")+
+  theme_minimal()+
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.title = element_blank()
+  )+
+  scale_fill_manual(values=c("#fd7f6f", "#7eb0d5", "#b2e061", "#bd7ebe", "#ffb55a", "#ffee65", "#beb9db"))+
+  labs(x="Year",y="Proportion of items of SRs")
+
+data_summary_SRs %>% 
+  filter(name!="SR_label_SR") %>% 
+  filter(name!="SR_label_ELS") %>% 
+  filter(name!="SR_label_LR") %>% 
+  select(G_Year_Pub,name,n) %>% 
+  merge(.,data %>% group_by(G_Year_Pub) %>% count() %>% rename(n_studies_per_year=n),by="G_Year_Pub",all.y=T) %>% 
+  group_by(G_Year_Pub) %>% mutate(count_col_label=1:n()) %>% ungroup() %>% 
+  mutate(count_col_label=ifelse(count_col_label==1,n_studies_per_year,NA),
+         name=gsub("SR_","",name), 
+         name=str_to_sentence(name)) %>% 
+  ggplot(aes(x=G_Year_Pub))+
+  # geom_col(aes(y=count_col_label))+
+  geom_bar(aes(y=n,fill=name),stat="identity")+
+  theme_minimal()+
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.title = element_blank()
+  )+
+  scale_fill_manual(values=c("#fd7f6f", "#7eb0d5", "#b2e061", "#bd7ebe", "#ffb55a", "#ffee65", "#beb9db"))+
+  labs(x="Year")
+
+data %>% 
+  select(StudyId,G_Year_Pub,starts_with("TS_"),-c(TS_SR_n,TS_other)) %>% 
+  pivot_longer(cols = starts_with("TS_")) %>% 
+  filter(value==T) %>% 
+  group_by(G_Year_Pub,name) %>% 
+  count() %>% 
+  ungroup() %>% 
+  mutate(name=gsub("TS_","",name),
+         name=case_when(name=="Literature_review"~"Literature review",
+                   name=="SR_yn"~"Systematic review",
+                   name=="Primary_study"~"Primary study",
+                   TRUE~name
+                   )) %>% 
+  mutate(name=factor(name,levels=c("Primary study","Observational","Database","Survey","Systematic review","AHL","Literature review"))) %>% 
+  merge(.,data %>% group_by(G_Year_Pub) %>% count() %>% rename(n_per_year=n),by="G_Year_Pub") %>% 
+  group_by(G_Year_Pub) %>% 
+  mutate(order=1:n(),label=ifelse(order==1,n_per_year,NA)) %>% 
+  ggplot(aes(x=G_Year_Pub,y=n))+
+  geom_bar(stat="identity",aes(fill=name))+
+  theme_minimal()+
+  theme(
+    legend.title = element_blank(),
+    panel.grid.minor = element_blank()
+  )+
+    scale_fill_manual(values=c("#b2e061", "#fd7f6f", "#ffee65", "#beb9db", "#ffb55a", "#7eb0d5","#dedede"))+
+  labs(x="Year",y="n types of study")
+
+data %>% 
+  select(StudyId,G_Year_Pub,starts_with("TS_"),-c(TS_SR_n,TS_other)) %>% 
+  pivot_longer(cols = starts_with("TS_")) %>% 
+  filter(value==T) %>% 
+  group_by(G_Year_Pub,name) %>% 
+  count() %>% 
+  ungroup() %>% 
+  mutate(name=gsub("TS_","",name),
+         name=case_when(name=="Literature_review"~"Literature review",
+                   name=="SR_yn"~"Systematic review",
+                   name=="Primary_study"~"Primary study",
+                   TRUE~name
+                   )) %>% 
+  mutate(name=factor(name,levels=c("Primary study","Observational","Database","Survey","Systematic review","AHL","Literature review"))) %>% 
+  merge(.,data %>% group_by(G_Year_Pub) %>% count() %>% rename(n_per_year=n),by="G_Year_Pub") %>% 
+  group_by(G_Year_Pub) %>% 
+  mutate(order=1:n(),label=ifelse(order==1,n_per_year,NA)) %>% 
+  ggplot(aes(x=G_Year_Pub,y=n))+
+  geom_bar(stat="identity",position="fill",aes(fill=name))+
+  geom_text(aes(label=label,y=0),position=position_nudge(y=0.03))+
+  theme_minimal()+
+  theme(
+    legend.title = element_blank(),
+    panel.grid.minor = element_blank()
+  )+
+    scale_fill_manual(values=c("#b2e061", "#fd7f6f", "#ffee65", "#beb9db", "#ffb55a", "#7eb0d5","#dedede"))+
+  labs(x="Year",y="Proportion of types of study")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
