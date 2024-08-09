@@ -395,7 +395,7 @@ Even though only `r items_extracted_SR_count$SR_extracted` SRs were extracted ac
 <br><br>
 
 ```{r}
-# save.image("image.RData")
+# save.image(paste0("image.RData"))
 ```
 
 
