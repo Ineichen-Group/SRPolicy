@@ -15,6 +15,7 @@ library(tidyr)
 library(stringr)
 library(dplyr)
 library(ggplot2)
+library(ggpubr)
 library(readxl)
 library(kableExtra)
 library(knitr)
@@ -211,8 +212,8 @@ ggsave("Figure1.png",dpi=300,height=3,width=7,bg="white")
 # Figure 2
 Overview of the types of studies over the years (percentage of all the studies for that year)
 
-```{r}
-data %>% 
+```{r fig.height=4.5,fig.width=7}
+fig2_b_plot<-data %>% 
   select(StudyId,G_Year_Pub,starts_with("TS_"),-c(TS_SR_n,TS_other)) %>% 
   pivot_longer(cols = starts_with("TS_")) %>% 
   filter(value==T) %>% 
@@ -231,7 +232,7 @@ data %>%
   merge(.,data %>% group_by(G_Year_Pub) %>% count() %>% rename(n_per_year=n),by="G_Year_Pub") %>% 
    mutate(perc_TS=n/n_per_year) %>% 
   filter(name!="Primary study") %>%
-  ggplot(aes(x=G_Year_Pub,y=perc_TS))+
+  ggplot(aes(x=G_Year_Pub,y=perc_TS*100))+
   geom_bar(stat="identity",aes(fill=name)) +
   facet_wrap(.~facet_var_ordered)+
   scale_fill_manual(values=c("AHL"="#fd7f6f","Observational"= "#7eb0d5","Database"= "#b2e061","Systematic review"= "#bd7ebe","Survey"= "#ffb55a","Literature review"= "#ffee65"))+
@@ -241,11 +242,25 @@ data %>%
     legend.title = element_blank(),
     legend.position = "none"
   )+
-  labs(y="Percentage of all studies", x="Year")
+  labs(y="Percentage of all studies (%)", x="Year")
 
 
-ggsave("Figure2.png",dpi=300,height=4.5,width=7,bg="white")
+fig2_a_plot<-data %>% group_by(G_Year_Pub) %>% count() %>% rename(n_per_year=n) %>% 
+  ggplot(aes(x=G_Year_Pub,y=n_per_year))+
+  geom_line(color="#5b7582")+  
+    geom_point(color="#445761")+
+  theme_minimal()+
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.title = element_blank(),
+    legend.position = "none"
+  )+
+  labs(y="n studies", x="Year")+
+  scale_y_continuous(limits=c(0,32))
 
+ggarrange(fig2_a_plot,fig2_b_plot,ncol=1,heights = c(.3,1))
+
+ggsave("Figure2.png",dpi=300,height=5,width=7,bg="white")
 ```
 
 
@@ -253,8 +268,8 @@ ggsave("Figure2.png",dpi=300,height=4.5,width=7,bg="white")
 
 # Figure 3
 
-```{r}
-data %>% 
+```{r fig.height=5,fig.width=7}
+fig3_b_plot<-data %>% 
   filter(TS_SR_yn==T) %>% 
   select(StudyId,G_Year_Pub,SR_protocol,SR_databases,SR_searchstring,SR_reviewers,SR_flowchart,SR_rob,SR_metanaalysis) %>% 
   group_by(G_Year_Pub) %>% 
@@ -278,7 +293,7 @@ data %>%
   )) %>% 
   group_by(name) %>% mutate(order_facet=sum(n)) %>% ungroup() %>%
   mutate(facet_var_ordered = factor(name, levels = unique(name[order(-order_facet)]))) %>% 
-  ggplot(aes(x=G_Year_Pub,y=perc_SR))+
+  ggplot(aes(x=G_Year_Pub,y=perc_SR*100))+
   geom_bar(stat="identity",aes(fill=name)) +
   # geom_text(aes(label=label,y=0))+
   facet_wrap(.~facet_var_ordered)+
@@ -290,9 +305,27 @@ data %>%
     plot.margin = margin(0, 15, 0, 0),
     legend.position = "none"
   )+
-  labs(y="Percentage of all studies", x="Year")
+  labs(y="Percentage of all studies (%)", x="Year")
+  scale_x_continuous(breaks=c(2012,2016,2020,2024))
 
-ggsave("Figure3.png",dpi=300,height=4.5,width=7,bg="white")
+
+fig3_a_plot<-data %>% filter(TS_SR_yn==T) %>% group_by(G_Year_Pub) %>% count() %>% rename(n_SR_per_Year=n) %>% 
+  ggplot(aes(x=G_Year_Pub,y=n_SR_per_Year))+
+  geom_line(color="#5b7582")+  
+    geom_point(color="#445761")+
+  theme_minimal()+
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.title = element_blank(),
+    legend.position = "none"
+  )+
+  labs(y="n SRs", x="Year")+
+  scale_x_continuous(breaks=c(2012,2016,2020,2024))+
+  scale_y_continuous(limits=c(0,NA))
+
+ggarrange(fig3_a_plot,fig3_b_plot,ncol=1,heights = c(.3,1))
+
+ggsave("Figure3.png",dpi=300,height=5,width=7,bg="white")
 
 
 ```
