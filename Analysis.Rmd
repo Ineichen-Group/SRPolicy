@@ -369,7 +369,7 @@ Even though only `r items_extracted_SR_count$SR_extracted` SRs were extracted ac
 
 
 ### Additional figures - not in the MS
-```{r include=F}
+```{r include=F, run=F}
 data_summary_SRs %>% 
   filter(name!="SR_label_SR") %>% 
   filter(name!="SR_label_ELS") %>% 
